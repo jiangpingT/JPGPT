@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JPGPT — 故事续写 & 训练监控</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3e;
+    --accent: #6c63ff;
+    --accent2: #00d4aa;
+    --text: #e8eaf6;
+    --text-muted: #7b7f9e;
+    --loss-color: #ff6b6b;
+    --tok-color: #6c63ff;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    min-height: 100vh;
+  }
+
+  /* ── 顶部标题栏 ─────────────────────────────────── */
+  header {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  header .logo {
+    font-size: 22px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
+  }
+  header .subtitle { color: var(--text-muted); font-size: 13px; }
+  .status-badge {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #555;
+    animation: none;
+  }
+  .dot.ready { background: var(--accent2); animation: pulse 2s infinite; }
+  .dot.training { background: #ffc107; animation: pulse 1s infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+
+  /* ── 两栏布局 ───────────────────────────────────── */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    height: calc(100vh - 73px);
+  }
+
+  /* ── 左栏：故事续写 ─────────────────────────────── */
+  .panel {
+    padding: 24px 28px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+  }
+  .panel-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+  }
+
+  /* 提示词输入 */
+  textarea {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 100px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: var(--text-muted); }
+
+  /* 参数调节 */
+  .params-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+  }
+  .param-group label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .param-group .param-val {
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 600;
+    float: right;
+  }
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  input[type="number"] {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+  }
+
+  /* 生成按钮 */
+  .btn-generate {
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(135deg, var(--accent), #5a52d5);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 0.3px;
+  }
+  .btn-generate:hover { opacity: 0.9; }
+  .btn-generate:active { transform: scale(0.98); }
+  .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* 故事输出框 */
+  .story-box {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    min-height: 200px;
+    font-size: 15px;
+    line-height: 1.8;
+    overflow-y: auto;
+  }
+  .story-box .prompt-part { color: var(--text-muted); }
+  .story-box .gen-part { color: var(--text); }
+  .story-box .placeholder { color: var(--text-muted); font-style: italic; }
+  .typing-cursor {
+    display: inline-block;
+    width: 2px; height: 1em;
+    background: var(--accent);
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: blink 1s infinite;
+  }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+  /* 元信息 */
+  .meta-row {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .meta-row span { display: flex; align-items: center; gap: 4px; }
+
+  /* ── 右栏：训练监控 ─────────────────────────────── */
+  .monitor {
+    padding: 24px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow-y: auto;
+  }
+
+  /* 指标卡片 */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .metric-card .label-en {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+  .metric-card .label-zh {
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0.6;
+    margin-top: 1px;
+  }
+  .metric-card .value {
+    font-size: 28px;
+    font-weight: 700;
+    margin-top: 6px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .metric-card .value.warn { background: none; -webkit-text-fill-color: #ffc107; }
+
+  /* 进度条 */
+  .progress-section .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .progress-bar-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 3px;
+    transition: width 0.5s ease;
+    width: 0%;
+  }
+
+  /* Loss 曲线 */
+  .chart-section {}
+  .chart-section canvas {
+    width: 100%;
+    height: 200px;
+    display: block;
+  }
+
+  /* 训练日志最新条目 */
+  .log-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    color: var(--accent2);
+    min-height: 60px;
+  }
+  .log-line { margin-bottom: 3px; opacity: 0.7; }
+  .log-line:last-child { opacity: 1; color: var(--text); }
+
+  /* 刷新按钮 */
+  .btn-refresh {
+    align-self: flex-start;
+    padding: 6px 14px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .btn-refresh:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* 未训练提示 */
+  .not-ready {
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 32px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.8;
+  }
+  .not-ready strong { color: var(--text); display: block; margin-bottom: 8px; font-size: 16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">JPGPT</div>
+    <div class="subtitle">0.1B GPT · TinyStories · 从零训练</div>
+  </div>
+  <div class="status-badge">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">检查状态中...</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── 左栏：故事续写 ── -->
+  <div class="panel">
+    <div class="panel-title">故事续写 / Story Completion</div>
+
+    <textarea id="prompt" placeholder="Once upon a time, there was a little cat named Mochi...&#10;&#10;（输入故事开头，模型帮你续写）" rows="4"></textarea>
+
+    <div class="params-row">
+      <div class="param-group">
+        <label>续写长度 <span class="param-val" id="lenVal">200</span></label>
+        <input type="range" id="maxTokens" min="50" max="500" value="200" step="10"
+               oninput="document.getElementById('lenVal').textContent=this.value">
+      </div>
+      <div class="param-group">
+        <label>Temperature <span class="param-val" id="tempVal">0.8</span></label>
+        <input type="range" id="temperature" min="0.1" max="2.0" value="0.8" step="0.05"
+               oninput="document.getElementById('tempVal').textContent=(+this.value).toFixed(2)">
+      </div>
+      <div class="param-group">
+        <label>Top-K <span class="param-val" id="topkVal">50</span></label>
+        <input type="range" id="topK" min="1" max="200" value="50"
+               oninput="document.getElementById('topkVal').textContent=this.value">
+      </div>
+    </div>
+
+    <button class="btn-generate" id="genBtn" onclick="generate()">生成故事</button>
+
+    <div class="story-box" id="storyBox">
+      <span class="placeholder">生成的故事将显示在这里...</span>
+    </div>
+
+    <div class="meta-row" id="metaRow" style="display:none">
+      <span>⏱ <span id="elapsed">-</span> ms</span>
+      <span>📝 新生成 <span id="newToks">-</span> tokens</span>
+    </div>
+  </div>
+
+  <!-- ── 右栏：训练监控 ── -->
+  <div class="monitor">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div class="panel-title">训练监控 / Training Monitor</div>
+      <button class="btn-refresh" onclick="refreshMonitor()">↻ 刷新</button>
+    </div>
+
+    <div id="monitorContent">
+      <div class="not-ready">
+        <strong>模型尚未就绪</strong>
+        训练开始后，每 500 步保存一次 checkpoint<br>
+        届时点击「刷新」即可看到训练进度
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── 状态检查 ──────────────────────────────────────────────
+async function checkStatus() {
+  try {
+    const r = await fetch('/status');
+    const d = await r.json();
+    const dot  = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+
+    if (d.model_loaded) {
+      dot.className = 'dot ready';
+      text.textContent = `模型已就绪 · step ${d.last_step}`;
+    } else if (d.checkpoint_exists) {
+      dot.className = 'dot training';
+      text.textContent = `训练中 · step ${d.last_step} · loss ${d.last_loss?.toFixed(4) ?? '-'}`;
+    } else {
+      dot.className = 'dot';
+      text.textContent = '等待训练开始...';
+    }
+    return d;
+  } catch (e) {
+    document.getElementById('statusText').textContent = '服务器未连接';
+    return null;
+  }
+}
+
+// ─── 故事生成 ──────────────────────────────────────────────
+async function generate() {
+  const prompt   = document.getElementById('prompt').value.trim();
+  const maxToks  = parseInt(document.getElementById('maxTokens').value);
+  const temp     = parseFloat(document.getElementById('temperature').value);
+  const topK     = parseInt(document.getElementById('topK').value);
+  const btn      = document.getElementById('genBtn');
+  const box      = document.getElementById('storyBox');
+
+  if (!prompt) { alert('请先输入故事开头'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+  box.innerHTML = `<span class="prompt-part">${escapeHtml(prompt)}</span><span class="typing-cursor"></span>`;
+
+  try {
+    const r = await fetch('/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, max_new_tokens: maxToks, temperature: temp, top_k: topK })
+    });
+    const d = await r.json();
+
+    if (d.error) {
+      box.innerHTML = `<span style="color:#ff6b6b">⚠ ${escapeHtml(d.error)}</span>`;
+      if (d.tip) box.innerHTML += `<br><span style="color:var(--text-muted);font-size:13px">${escapeHtml(d.tip)}</span>`;
+    } else {
+      box.innerHTML =
+        `<span class="prompt-part">${escapeHtml(d.prompt)}</span>` +
+        `<span class="gen-part">${escapeHtml(d.generated)}</span>`;
+
+      document.getElementById('metaRow').style.display = 'flex';
+      document.getElementById('elapsed').textContent = d.elapsed_ms;
+      document.getElementById('newToks').textContent = d.new_tokens;
+    }
+  } catch (e) {
+    box.innerHTML = `<span style="color:#ff6b6b">⚠ 连接服务器失败：${e.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '生成故事';
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+// ─── 训练监控 ──────────────────────────────────────────────
+let lossChart = null;
+
+async function refreshMonitor() {
+  const status = await checkStatus();
+  if (!status) return;
+
+  // 获取训练日志
+  let logs = [];
+  try {
+    const r = await fetch('/train_log');
+    logs = await r.json();
+  } catch (e) {}
+
+  const container = document.getElementById('monitorContent');
+
+  if (!status.checkpoint_exists && logs.length === 0) {
+    container.innerHTML = `
+      <div class="not-ready">
+        <strong>模型尚未就绪</strong>
+        训练开始后，每 500 步保存一次 checkpoint<br>
+        届时点击「刷新」即可看到训练进度
+      </div>`;
+    return;
+  }
+
+  const last = logs.length > 0 ? logs[logs.length - 1] : {};
+  const TARGET = 2_000_000_000;
+  const pct = last.tokens_seen ? (last.tokens_seen / TARGET * 100).toFixed(1) : 0;
+  const loss = last.loss ? last.loss.toFixed(4) : '--';
+  const tokps = last.tok_per_sec ? (last.tok_per_sec / 1000).toFixed(1) + 'K' : '--';
+  const tokSeen = last.tokens_seen ? (last.tokens_seen / 1e6).toFixed(0) + 'M' : '0';
+
+  const remaining = last.tokens_seen ? TARGET - last.tokens_seen : TARGET;
+  const etaH = last.tok_per_sec && last.tok_per_sec > 0
+    ? (remaining / last.tok_per_sec / 3600).toFixed(1)
+    : '--';
+
+  container.innerHTML = `
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="label-en">Loss</div><div class="label-zh">训练损失</div>
+        <div class="value">${loss}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label-en">tok/s</div><div class="label-zh">训练速度</div>
+        <div class="value">${tokps}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label-en">Tokens Seen</div><div class="label-zh">已看数据量</div>
+        <div class="value">${tokSeen}</div>
+      </div>
+      <div class="metric-card">
+        <div class="label-en">ETA</div><div class="label-zh">预计剩余</div>
+        <div class="value ${etaH === '--' ? 'warn' : ''}">${etaH === '--' ? '--' : etaH + 'h'}</div>
+      </div>
+    </div>
+
+    <div class="progress-section">
+      <div class="progress-label">
+        <span>训练进度</span>
+        <span>${pct}% · 目标 2B tokens</span>
+      </div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="progFill"></div>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <div class="panel-title" style="margin-bottom:12px">Loss 曲线</div>
+      <canvas id="lossCanvas"></canvas>
+    </div>
+
+    <div class="log-section" id="logLines">最新日志...</div>
+  `;
+
+  // 设置进度条
+  setTimeout(() => {
+    const fill = document.getElementById('progFill');
+    if (fill) fill.style.width = pct + '%';
+  }, 100);
+
+  // 绘制 loss 曲线
+  if (logs.length > 1) {
+    drawLossChart(logs);
+  }
+
+  // 最近几条日志
+  const logEl = document.getElementById('logLines');
+  if (logEl && logs.length > 0) {
+    const recent = logs.slice(-5);
+    logEl.innerHTML = recent.map(l =>
+      `<div class="log-line">step ${l.step} | loss ${l.loss?.toFixed(4)} | ${(l.tok_per_sec/1000).toFixed(1)}K tok/s</div>`
+    ).join('');
+  }
+}
+
+function drawLossChart(logs) {
+  const canvas = document.getElementById('lossCanvas');
+  if (!canvas) return;
+
+  // 每隔几个点采样，避免太密
+  const step = Math.max(1, Math.floor(logs.length / 200));
+  const sampled = logs.filter((_, i) => i % step === 0);
+
+  const steps  = sampled.map(l => l.step);
+  const losses = sampled.map(l => l.loss);
+  const minL = Math.min(...losses);
+  const maxL = Math.max(...losses);
+  const range = maxL - minL || 1;
+
+  const W = canvas.parentElement.offsetWidth - 56;
+  const H = 200;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  const pad = { top: 20, right: 20, bottom: 30, left: 50 };
+  const iW = W - pad.left - pad.right;
+  const iH = H - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // 背景网格
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (iH * i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(pad.left + iW, y); ctx.stroke();
+    const val = (maxL - range * i / 4).toFixed(3);
+    ctx.fillStyle = 'rgba(123,127,158,0.8)';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(val, pad.left - 6, y + 4);
+  }
+
+  // Loss 曲线（渐变填充）
+  const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + iH);
+  grad.addColorStop(0, 'rgba(108,99,255,0.4)');
+  grad.addColorStop(1, 'rgba(108,99,255,0.0)');
+
+  ctx.beginPath();
+  sampled.forEach((l, i) => {
+    const x = pad.left + (i / (sampled.length - 1)) * iW;
+    const y = pad.top + ((maxL - l.loss) / range) * iH;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  // 填充区域
+  ctx.lineTo(pad.left + iW, pad.top + iH);
+  ctx.lineTo(pad.left, pad.top + iH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // 曲线本体
+  ctx.beginPath();
+  sampled.forEach((l, i) => {
+    const x = pad.left + (i / (sampled.length - 1)) * iW;
+    const y = pad.top + ((maxL - l.loss) / range) * iH;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#6c63ff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // X 轴标签
+  ctx.fillStyle = 'rgba(123,127,158,0.8)';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  [0, 0.25, 0.5, 0.75, 1].forEach(t => {
+    const i = Math.floor(t * (sampled.length - 1));
+    const x = pad.left + t * iW;
+    ctx.fillText(`s${steps[i]}`, x, H - 6);
+  });
+}
+
+// ─── 键盘快捷键 ────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') generate();
+});
+
+// ─── 初始化 ────────────────────────────────────────────────
+checkStatus();
+refreshMonitor();
+setInterval(checkStatus, 10000);      // 每 10 秒更新状态
+setInterval(refreshMonitor, 30000);   // 每 30 秒刷新监控
+</script>
+
+</body>
+</html>
