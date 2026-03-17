@@ -87,6 +87,36 @@
     color: var(--text-muted);
   }
 
+  /* 示例开头 */
+  .examples-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .examples-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .example-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+    white-space: nowrap;
+  }
+  .example-chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
   /* 提示词输入 */
   textarea {
     width: 100%;
@@ -327,6 +357,18 @@
   <!-- ── 左栏：故事续写 ── -->
   <div class="panel">
     <div class="panel-title">故事续写 / Story Completion</div>
+
+    <div>
+      <div class="examples-label">示例开头（点击填入）</div>
+      <div class="examples-grid">
+        <div class="example-chip" onclick="fillPrompt(this)">Once upon a time, there was a little cat named Mochi who loved to explore the forest.</div>
+        <div class="example-chip" onclick="fillPrompt(this)">There was a brave little rabbit named Benny who wanted to find the biggest carrot in the world.</div>
+        <div class="example-chip" onclick="fillPrompt(this)">Lily was a small girl who had a magic crayon. Whatever she drew came to life.</div>
+        <div class="example-chip" onclick="fillPrompt(this)">The dragon was sad because he could not breathe fire like the other dragons.</div>
+        <div class="example-chip" onclick="fillPrompt(this)">Tom the turtle walked very slowly, but he had a secret — he could talk to the stars.</div>
+        <div class="example-chip" onclick="fillPrompt(this)">One rainy day, a little puppy found a mysterious door at the end of the garden.</div>
+      </div>
+    </div>
 
     <textarea id="prompt" placeholder="Once upon a time, there was a little cat named Mochi...&#10;&#10;（输入故事开头，模型帮你续写）" rows="4"></textarea>
 
@@ -625,6 +667,12 @@ function drawLossChart(logs) {
     const x = pad.left + t * iW;
     ctx.fillText(`s${steps[i]}`, x, H - 6);
   });
+}
+
+// ─── 示例填入 ───────────────────────────────────────────────
+function fillPrompt(el) {
+  document.getElementById('prompt').value = el.textContent.trim();
+  document.getElementById('prompt').focus();
 }
 
 // ─── 键盘快捷键 ────────────────────────────────────────────

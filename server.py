@@ -168,5 +168,5 @@ if __name__ == "__main__":
     try_reload()
     if model is None:
         print(">>> 模型未就绪，训练完成后刷新页面即可自动加载")
-    print(">>> 访问：http://localhost:8080")
-    app.run(host="0.0.0.0", port=8080, debug=False)
+    print(">>> 访问：http://localhost:19006")
+    app.run(host="0.0.0.0", port=19006, debug=False)
